@@ -2,8 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public abstract class State
-{
+//Abstract class for all states
+public abstract class State {
+	PlayerStates player;
 	//directionals Down
 	public virtual State leftKey(PlayerStates player){return null;}
 	public virtual State rightKey(PlayerStates player){return null;}
@@ -30,15 +31,17 @@ public abstract class State
 	public virtual State GetHit(PlayerStates player){return null;}
 	
 	//Movement
-	public virtual Vector2 Move(Rigidbody2D rb){return rb.velocity;}
-	public virtual State Aerial(PlayerStates player, bool grounded){return null;}
+	public virtual Vector2 Move(PlayerStates player){
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
+		return rb.velocity;
+	}
 	
-	//Timer
-	public virtual State Timer(PlayerStates player, float time){ return null;}
+	//Update
+	public virtual State Update(PlayerStates player){ return null;}
 }
 
-public abstract class SubState : State
-{
+//Abstract class for substates
+public abstract class SubState : State {
 	public State state;
 	public SubState(State baseState)
 	{
@@ -46,148 +49,212 @@ public abstract class SubState : State
 	}
 }
 
-//Unarmed Idle
-public class NaturalState : State
-{
+//Basic Idle
+public class NaturalState : State {
 	public override State leftKey(PlayerStates player){return new NaturalRunningState();}
 	public override State rightKey(PlayerStates player){return new NaturalRunningState();}
 	public override State downKey(PlayerStates player){return new NaturalDuckState();}
+	public override State upKey(PlayerStates player){return new Interact(this);}
 	public override State aKey(PlayerStates player){return new EquipMenu(this);}
-	public override State aKeyUp(PlayerStates player){return new UnarmedStance();}
+	public override State aKeyUp(PlayerStates player){return new BasicStance();}
 	public override State zKey(PlayerStates player){return new PunchState();}
-	public override State xKey(PlayerStates player)
+	public override State xKey(PlayerStates player){return new NaturalJumpState();}
+	public override State Update(PlayerStates player)
 	{
-		Rigidbody2D body = player.GetComponent<Rigidbody2D>();
-		Vector2 velocity = body.velocity;
-		velocity.y = 5; //JUMP FORCE
-		body.velocity = velocity;
-		return new NaturalJump();
+		if (!player.grounded) return new NaturalFallState();
+		return null;
 	}
-	public override Vector2 Move(Rigidbody2D rb)
+	public override Vector2 Move(PlayerStates player)
 	{
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
 		return new Vector2(Mathf.Lerp(rb.velocity.x, 0, Time.deltaTime * 5),
-		rb.velocity.y);
+			rb.velocity.y);
 	}
 }
 
 //Weapon Menu
-public class EquipMenu : SubState
-{
+public class EquipMenu : SubState {
 	public EquipMenu(State basestate) : base(basestate){}
 	public override State upKeyUp(PlayerStates player){return player.shortCuts[0];}
 	public override State leftKeyUp(PlayerStates player){return player.shortCuts[1];}
 	public override State downKeyUp(PlayerStates player){return player.shortCuts[2];}
 	public override State rightKeyUp(PlayerStates player){return player.shortCuts[3];}
 	public override State aKeyUp(PlayerStates player){return state.aKeyUp(player);}
-	public override Vector2 Move(Rigidbody2D rb){return new Vector2(0, rb.velocity.y);}
+	public override Vector2 Move(PlayerStates player){
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
+		return new Vector2(0, rb.velocity.y);}
 }
 
-//Unarmed Running
-public class NaturalRunningState : State
-{
+//Basic Running
+public class NaturalRunningState : State {
 	public override State leftKeyUp(PlayerStates player){return new NaturalState();}
 	public override State rightKeyUp(PlayerStates player){return leftKeyUp(player);}
 	public override State downKey(PlayerStates player){return new NaturalRollState();}
-	public override Vector2 Move(Rigidbody2D rb){return new Vector2(Input.GetAxis("Horizontal"), rb.velocity.y);}
+	public override State xKey(PlayerStates player){return new NaturalJumpState();}
+	public override Vector2 Move(PlayerStates player){
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
+		return new Vector2(Input.GetAxis("Horizontal") * 2, rb.velocity.y);
+	}
 }
 
-//Unarmed Ducking
-public class NaturalDuckState : State
-{
+//Basic Ducking
+public class NaturalDuckState : State {
 	public override State leftKey(PlayerStates player){return new NaturalCrawlState();}
 	public override State rightKey(PlayerStates player){return new NaturalCrawlState();}
 	public override State downKeyUp(PlayerStates player){return new NaturalState();}
-	public override Vector2 Move(Rigidbody2D rb){return new Vector2(0, rb.velocity.y);}
+	public override State upKey(PlayerStates player){return new Interact(this);}
+	public override Vector2 Move(PlayerStates player){
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
+		return new Vector2(0, rb.velocity.y);
+	}
 }
 
-//Unarmed Crawling
-public class NaturalCrawlState : State
-{
+//Basic Crawling
+public class NaturalCrawlState : State {
 	public override State downKeyUp(PlayerStates player){return new NaturalRunningState();}
 	public override State leftKeyUp(PlayerStates player){return new NaturalDuckState();}
 	public override State rightKeyUp(PlayerStates player){return leftKeyUp(player);}
-	public override Vector2 Move(Rigidbody2D rb){return new Vector2(Input.GetAxis("Horizontal")/2, rb.velocity.y);}
+	public override Vector2 Move(PlayerStates player){
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
+		return new Vector2(Input.GetAxis("Horizontal")/2, rb.velocity.y);
+	}
 }
 
-//Unarmed Roll
-public class NaturalRollState : State
-{
-	public override Vector2 Move(Rigidbody2D rb)
+//Basic Roll
+public class NaturalRollState : State {
+	float timer = 0;
+	
+	public override Vector2 Move(PlayerStates player)
 	{
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
 		return new Vector2(3 * Mathf.Sign(rb.velocity.x), rb.velocity.y);
 	}
 	
-	public override State Timer(PlayerStates player, float time)
+	public override State Update(PlayerStates player)
 	{
-		int roundTime = (int) Mathf.Floor(time);
-		switch(roundTime)
-		{
-			case 1:
-				if (Input.GetKey(KeyCode.DownArrow))
-					return new NaturalCrawlState();
-				else
-					return new NaturalRunningState();
-			default:
-				return null;
+		timer += Time.deltaTime;
+		int roundTime = (int) Mathf.Floor(timer);
+		if (roundTime >= 1){
+			if (Input.GetKey(KeyCode.DownArrow))
+				return new NaturalCrawlState();
+			else if (Input.GetAxis("Horizontal") > 0)
+				return new NaturalRunningState();
+			else
+				return new NaturalState();
 		}
+		else return null;
 	}
 }
 
 //Punch
-public class PunchState : State
-{
-	public override Vector2 Move(Rigidbody2D rb)
+public class PunchState : State {
+	float timer = 0;
+	public override Vector2 Move(PlayerStates player)
 	{
+		Rigidbody2D rb = player.GetComponent<Rigidbody2D>();
 		return new Vector2(2 * Mathf.Sign(rb.velocity.x), rb.velocity.y);
 	}
 	
-	public override State Timer(PlayerStates player, float time)
+	public override State Update(PlayerStates player)
 	{
-		int roundTime = (int) Mathf.Floor(time);
+		timer += Time.deltaTime;
+		int roundTime = (int) Mathf.Floor(timer);
 		switch(roundTime)
 		{
 			case 1:
-				return new UnarmedStance();
+				return new BasicStance();
 			default:
 				return null;
 		}
 	}
 }
 
-//Unarmed Combat Stance
-public class UnarmedStance : NaturalState
-{
+//Basic Combat Stance
+public class BasicStance : NaturalState {
 	public override State aKeyUp(PlayerStates player){return new NaturalState();}
 }
 
-//Unarmed Jumping
-public class NaturalJump : State
-{
-	public override State Aerial(PlayerStates player, bool grounded)
+//Basic Jumping
+public class NaturalJumpState : State {
+	float timer = 0;
+	public override State Update(PlayerStates player)
 	{
-		if (grounded) return new NaturalState();
+		timer += Time.deltaTime;
+		Rigidbody2D body = player.GetComponent<Rigidbody2D>();
+		if (timer <= 0.1f)
+		{
+			Vector2 velocity = body.velocity;
+			velocity.y = 5; //JUMP FORCE (replace with player stats)
+			body.velocity = velocity;
+		}
+		else if (body.velocity.y <= 0)
+		{
+			return new NaturalFallState();
+		}
 		return null;
 	}
 }
 
-//Player Controller
-public class PlayerStates : MonoBehaviour
-{
-	State currentState;
-	State nextState;
-	public string cstate;
-	Rigidbody2D body;
-	public State[] shortCuts = new State[4]; //up:0 - left - down - right:3
-	public float timer = 0;
+//Basic Controlled falling (after jumping or simple falling while moving)
+public class NaturalFallState : State {
+	public override State Update(PlayerStates player)
+	{
+		if (player.grounded)
+		{
+			if (Mathf.Abs(Input.GetAxis("Horizontal")) > 0) return new NaturalRunningState();
+			else return new NaturalState();
+		}
+		return null;
+	}
 	
-	public float radius;
-	public LayerMask whatIsGround;
+	//public override Vector2 Move(PlayerStates player)
+	//{
+	//	return new Vector2(Mathf.Max(Input.GetAxis("Horizontal"), rb.velocity.x), rb.velocity.y);
+	//}
+}
+
+//Interacting with different objects
+public class Interact : SubState {
+	public Interact(State basestate) : base(basestate){}
+	public override State Update(PlayerStates player){
+		Collider2D interact =
+			Physics2D.OverlapCircle(player.transform.position, player.radius, player.whatIsInteractable);
+		if (interact){
+			Item item = interact.GetComponent<Item>();
+			if (item){
+				return item.PickUp(this);
+			}
+			else return state;
+		}
+		else
+			return state;
+	}
+}
+
+
+//Player Controller
+public class PlayerStates : MonoBehaviour {
+	State currentState;		//Current player State
+	State nextState;		//The next state to become the Current State
+	public string cstate;	//Temporary state indicator (From Editor)
+	Rigidbody2D body;		//Character's Rigidbody2D
+	
+	public State[] shortCuts = new State[4]; //up:0 - left - down - right:3 (Temporary test for weapon equiping)
+	public float radius;					//Radius of the ground detection
+	public LayerMask whatIsGround;			//LayerMask for ground detection
+	public LayerMask whatIsInteractable;	//LayerMask for interactable objects
+	
+	public bool grounded;			//Boolean for ground detection
+	BoxCollider2D box;
+	
+	public float playerSpeed = 2;	//Temporary player speed
 	
     // Start is called before the first frame update
     void Start()
     {
         currentState = new NaturalState();
 		body = GetComponent<Rigidbody2D>();
+		box = GetComponent<BoxCollider2D>();
 		shortCuts[0] = new NaturalState();
 		shortCuts[1] = new NaturalState();
 		shortCuts[2] = new NaturalState();
@@ -198,87 +265,95 @@ public class PlayerStates : MonoBehaviour
     void Update()
     {
 		//Check if grounded
-		bool grounded = Physics2D.OverlapCircle(transform.position - Vector3.up * 0.5f, radius, whatIsGround);
-		nextState = currentState.Aerial(this, grounded);
-		if (nextState != null) { currentState = nextState; timer = 0; }
-		
+		grounded = Physics2D.OverlapBox(transform.position - Vector3.up * 0.25f, box.size, 0, whatIsGround);
+
+		//Inputs & Other States
         if (Input.GetKeyDown(KeyCode.LeftArrow))
 		{
 			nextState = currentState.leftKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.LeftArrow))
 		{
 			nextState = currentState.leftKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyDown(KeyCode.RightArrow))
 		{
 			nextState = currentState.rightKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.RightArrow))
 		{
 			nextState = currentState.rightKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
         else if (Input.GetKeyDown(KeyCode.DownArrow))
 		{
 			nextState = currentState.downKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.DownArrow))
 		{
 			nextState = currentState.downKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
         else if (Input.GetKeyDown(KeyCode.UpArrow))
 		{
 			nextState = currentState.upKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.UpArrow))
 		{
 			nextState = currentState.upKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyDown(KeyCode.Z))
 		{
 			nextState = currentState.zKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.Z))
 		{
 			nextState = currentState.zKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyDown(KeyCode.X))
 		{
 			nextState = currentState.xKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.X))
 		{
 			nextState = currentState.xKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyDown(KeyCode.A))
 		{
 			nextState = currentState.aKey(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else if (Input.GetKeyUp(KeyCode.A))
 		{
 			nextState = currentState.aKeyUp(this);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			if (nextState != null) { currentState = nextState;}
 		}
 		else
 		{
-			nextState = currentState.Timer(this, timer);
-			if (nextState != null) { currentState = nextState; timer = 0; }
+			nextState = currentState.Update(this);
+			if (nextState != null) { currentState = nextState;}
 		}
-		timer += Time.deltaTime;
+		
+		//Movement
 		cstate = currentState.ToString();
-		body.velocity = currentState.Move(body);
+		body.velocity = currentState.Move(this);
     }
+    private void OnDrawGizmos()
+    {
+        Vector2 origin = transform.position - Vector3.up * 0.25f;
+        Gizmos.color = Color.red;
+        Gizmos.DrawCube(origin, Vector2.one);
+        Gizmos.DrawSphere(transform.position, radius);
+    }
+	
 }
